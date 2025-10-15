@@ -4,7 +4,17 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Talk It Out 🎙️ — Speaking & Listening Game</title>
+<!-- Put this inside the <head> section of your HTML -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 
+<script>
+const SUPABASE_URL = "https://xojtbssmlmeduriiwvax.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhvanRic3NtbG1lZHVyaWl3dmF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA0OTk5MDgsImV4cCI6MjA3NjA3NTkwOH0.K5SkVHUM0bmq7RtkUwDguUu9qmXRVO22ZAsKSPYR_44";
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+</script>
+
+  
 <!-- MP3 encoder + ZIP export libs -->
 <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.0/lame.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Talk It Out — Teacher Dashboard (Safe Mode)</title>
+<style>
+  body{margin:0;font-family:system-ui,Arial;background:#0b1020;color:#e9ecff}
+  .wrap{max-width:900px;margin:0 auto;padding:24px}
+  .card{background:#101737;border:1px solid #2a3563;border-radius:16px;padding:16px;margin:14px 0}
+  input,button{padding:10px 12px;border-radius:10px;border:1px solid #2a3563;background:#0f1430;color:#e9ecff}
+  button{cursor:pointer}
+  table{width:100%;border-collapse:collapse} th,td{border-bottom:1px solid #2a3563;padding:8px;text-align:left}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  #console{white-space:pre-wrap;background:#0d1330;border:1px solid #2a3563;border-radius:8px;padding:8px;max-height:180px;overflow:auto}
+</style>
+<!-- 1) Load Supabase UMD first, with defer -->
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<!-- 2) Your app script (also deferred) -->
+<script defer>
+/* ====== EDIT THESE TWO LINES ====== */
+const SUPABASE_URL = "https://xojtbssmlmeduriiwvax.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhvanRic3NtbG1lZHVyaWl3dmF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA0OTk5MDgsImV4cCI6MjA3NjA3NTkwOH0.K5SkVHUM0bmq7RtkUwDguUu9qmXRVO22ZAsKSPYR_44";
+/* ================================== */
+
+function log(msg){ const c=document.getElementById('console'); c.textContent += (msg+"\n"); c.scrollTop=c.scrollHeight; }
+
+window.addEventListener('DOMContentLoaded', async () => {
+  // Sanity check keys
+  if(!SUPABASE_URL || !/^https:\/\/.+\.supabase\.co$/.test(SUPABASE_URL)){
+    alert("SUPABASE_URL is missing or wrong."); log("Bad SUPABASE_URL"); return;
+  }
+  if(!SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.length < 20){
+    alert("SUPABASE_ANON_KEY is missing or too short."); log("Bad anon key"); return;
+  }
+
+  // Supabase library present?
+  if(!window.supabase || !supabase.createClient){
+    alert("Supabase library failed to load. Check your internet or try again.");
+    log("Supabase UMD not available"); return;
+  }
+
+  // Create client
+  const { createClient } = supabase;
+  const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // Wire buttons
+  const els = {
+    email: document.getElementById('email'),
+    password: document.getElementById('password'),
+    loginBtn: document.getElementById('loginBtn'),
+    logoutBtn: document.getElementById('logoutBtn'),
+    authStatus: document.getElementById('authStatus'),
+    refreshBtn: document.getElementById('refreshBtn'),
+    csvBtn: document.getElementById('csvBtn'),
+    filterClass: document.getElementById('filterClass'),
+    tbody: document.querySelector('#tbl tbody'),
+    count: document.getElementById('count')
+  };
+
+  function setAuthedUI(on){
+    els.refreshBtn.disabled = !on;
+    els.csvBtn.disabled = !on;
+  }
+
+  async function checkSession(){
+    const { data, error } = await sb.auth.getSession();
+    if(error){ log("getSession error: "+error.message); }
+    els.authStatus.textContent = data.session ? `Signed in as ${data.session.user.email}` : 'Not signed in';
+    setAuthedUI(!!data.session);
+    return !!data.session;
+  }
+
+  els.loginBtn.addEventListener('click', async ()=>{
+    log("Login click captured.");
+    els.authStatus.textContent = "Signing in…";
+    const email = (els.email.value||"").trim();
+    const password = els.password.value||"";
+    try{
+      const { data, error } = await sb.auth.signInWithPassword({ email, password });
+      if(error){ els.authStatus.textContent = "Error: "+error.message; alert("Sign-in failed:\n"+error.message); log("Sign-in error: "+error.message); return; }
+      log("Sign-in ok for "+(data.user?.email||email));
+      await checkSession();
+    }catch(e){
+      els.authStatus.textContent = "Unexpected error";
+      alert("Unexpected error:\n"+(e.message||e));
+      log("Unexpected: "+(e.message||e));
+    }
+  });
+
+  els.logoutBtn.addEventListener('click', async ()=>{
+    log("Logout click captured.");
+    await sb.auth.signOut();
+    await checkSession();
+  });
+
+  // data fetch / render
+  async function fetchRounds(){
+    const authed = await checkSession();
+    if(!authed){ alert("Sign in first."); return []; }
+    let q = sb.from('rounds').select('*').order('created_at', { ascending:false }).limit(2000);
+    const cc = (els.filterClass.value||"").trim();
+    if(cc) q = q.eq('class_code', cc);
+    const { data, error } = await q;
+    if(error){ alert(error.message); log("Fetch error: "+error.message); return []; }
+    return data||[];
+  }
+  function render(rows){
+    els.tbody.innerHTML = "";
+    els.count.textContent = `${rows.length} rows`;
+    const base = SUPABASE_URL.replace(/\/$/, "");
+    for(const r of rows){
+      const sUrl = r.speaker_audio_path ? `${base}/storage/v1/object/public/talk-it-out-audio/${r.speaker_audio_path}` : '';
+      const lUrl = r.listener_audio_path ? `${base}/storage/v1/object/public/talk-it-out-audio/${r.listener_audio_path}` : '';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${new Date(r.created_at).toLocaleString()}</td>
+        <td>${r.round??''}</td>
+        <td>${r.team??''}</td>
+        <td>${r.speaker_name??''}</td>
+        <td>${r.listener_name??''}</td>
+        <td>${r.speaker_score_total??0}</td>
+        <td>${r.listener_score_total??0}</td>
+        <td>${r.teacher_points??0}</td>
+        <td>${r.teacher_approved? '✅':'—'}</td>
+        <td>${sUrl?`<a href="${sUrl}" target="_blank">S</a>`:'—'} / ${lUrl?`<a href="${lUrl}" target="_blank">L</a>`:'—'}</td>
+      `;
+      els.tbody.appendChild(tr);
+    }
+  }
+
+  document.getElementById('refreshBtn').addEventListener('click', async ()=>{
+    log("Refresh click captured.");
+    const rows = await fetchRounds(); render(rows);
+  });
+
+  document.getElementById('csvBtn').addEventListener('click', async ()=>{
+    log("CSV click captured.");
+    const rows = await fetchRounds();
+    const header = ['timestamp','round','team','speaker_name','listener_name','prompt','speaker_score_total','listener_score_total','speaker_rubric_json','listener_rubric_json','teacher_points','teacher_approved','speaker_audio_path','listener_audio_path','listener_text'];
+    const esc = v=>{ if(v==null) return ''; const s=String(v); return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s; };
+    const lines = [header.join(',')];
+    for(const r of rows){
+      lines.push([r.created_at,r.round,r.team,r.speaker_name,r.listener_name,r.prompt,r.speaker_score_total,r.listener_score_total,JSON.stringify(r.speaker_rubric_json||{}),JSON.stringify(r.listener_rubric_json||{}),r.teacher_points,r.teacher_approved?1:0,r.speaker_audio_path||'',r.listener_audio_path||'',r.listener_text||''].map(esc).join(','));
+    }
+    const blob = new Blob([lines.join('\n')], {type:'text/csv'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `talk-it-out_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+  });
+
+  // Initial session check + diagnostics
+  log("Page loaded. Checking session…");
+  await checkSession();
+  log("If clicks still do nothing, open the browser DevTools console (F12) and read any errors shown here or in the console.");
+});
+</script>
+</head>
+<body>
+<div class="wrap">
+  <h1>Talk It Out — Teacher Dashboard</h1>
+
+  <div class="card">
+    <div class="row">
+      <input id="email" type="email" placeholder="Email">
+      <input id="password" type="password" placeholder="Password">
+      <button id="loginBtn" type="button">Sign in</button>
+      <button id="logoutBtn" type="button">Sign out</button>
+    </div>
+    <div id="authStatus" style="margin-top:8px;opacity:.8">Not signed in</div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <input id="filterClass" placeholder="Filter by Class Code (optional)">
+      <button id="refreshBtn" type="button" disabled>Refresh</button>
+      <button id="csvBtn" type="button" disabled>Download CSV</button>
+    </div>
+    <div id="count" style="margin:8px 0;opacity:.8">0 rows</div>
+    <div style="max-height:55vh;overflow:auto">
+      <table id="tbl">
+        <thead>
+          <tr>
+            <th>Time</th><th>Round</th><th>Team</th><th>Speaker</th><th>Listener</th>
+            <th>Speaker Score</th><th>Listener Score</th>
+            <th>Teacher Pts</th><th>Approved</th><th>Audio (S / L)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <strong>Debug console</strong>
+    <div id="console">Waiting…</div>
+  </div>
+</div>
+</body>
+</html>
